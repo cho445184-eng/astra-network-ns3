@@ -48,6 +48,8 @@ SwitchNode::SwitchNode(){
 	m_ecmpSeed = m_id;
 	m_node_type = 1;
 	m_mmu = CreateObject<SwitchMmu>();
+	m_ecmpRouting = CreateObject<RdmaEcmpRouting>();
+	m_ecmpRouting->SetEcmpSeed(m_ecmpSeed);
 	for (uint32_t i = 0; i < pCnt; i++)
 		for (uint32_t j = 0; j < pCnt; j++)
 			for (uint32_t k = 0; k < qCnt; k++)
@@ -176,17 +178,20 @@ uint32_t SwitchNode::EcmpHash(const uint8_t* key, size_t len, uint32_t seed) {
   return h;
 }
 
-void SwitchNode::SetEcmpSeed(uint32_t seed){
-	m_ecmpSeed = seed;
-}
-
 void SwitchNode::AddTableEntry(Ipv4Address &dstAddr, uint32_t intf_idx){
 	uint32_t dip = dstAddr.Get();
 	m_rtTable[dip].push_back(intf_idx);
+	m_ecmpRouting->AddRoute(dstAddr, intf_idx);
 }
 
 void SwitchNode::ClearTable(){
 	m_rtTable.clear();
+	m_ecmpRouting->ClearRoutes();
+}
+
+void SwitchNode::SetEcmpSeed(uint32_t seed){
+	m_ecmpSeed = seed;
+	m_ecmpRouting->SetEcmpSeed(seed);
 }
 
 // This function can only be called in switch mode

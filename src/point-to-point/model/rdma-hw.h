@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include "pint.h"
 #include "rdma-congestion-ops.h"
+#include "rdma-ecmp-routing.h"
 
 namespace ns3 {
 
@@ -43,7 +44,8 @@ public:
 	std::vector<RdmaInterfaceMgr> m_nic; // list of running nic controlled by this RdmaHw
 	std::unordered_map<uint64_t, Ptr<RdmaQueuePair> > m_qpMap; // mapping from uint64_t to qp
 	std::unordered_map<uint64_t, Ptr<RdmaRxQueuePair> > m_rxQpMap; // mapping from uint64_t to rx qp
-	std::unordered_map<uint32_t, std::vector<int> > m_rtTable; // map from ip address (u32) to possible ECMP port (index of dev)
+	std::unordered_map<uint32_t, std::vector<int> > m_rtTable; // legacy: map from ip address (u32) to possible ECMP port (index of dev)
+	Ptr<RdmaEcmpRouting> m_ecmpRouting; // layered routing protocol
 
 	// qp complete callback
 	typedef Callback<void, Ptr<RdmaQueuePair> > QpCompleteCallback;

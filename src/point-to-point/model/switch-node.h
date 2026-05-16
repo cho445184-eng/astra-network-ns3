@@ -5,6 +5,7 @@
 #include <ns3/node.h>
 #include "qbb-net-device.h"
 #include "switch-mmu.h"
+#include "rdma-ecmp-routing.h"
 #include "pint.h"
 
 namespace ns3 {
@@ -41,6 +42,7 @@ private:
 	void CheckAndSendResume(uint32_t inDev, uint32_t qIndex);
 public:
 	Ptr<SwitchMmu> m_mmu;
+	Ptr<RdmaEcmpRouting> m_ecmpRouting; // layered routing protocol
 
 	static TypeId GetTypeId (void);
 	SwitchNode();

@@ -597,10 +597,14 @@ void RdmaHw::SetLinkDown(Ptr<QbbNetDevice> dev){
 void RdmaHw::AddTableEntry(Ipv4Address &dstAddr, uint32_t intf_idx){
 	uint32_t dip = dstAddr.Get();
 	m_rtTable[dip].push_back(intf_idx);
+	if (m_ecmpRouting)
+		m_ecmpRouting->AddRoute(dstAddr, intf_idx);
 }
 
 void RdmaHw::ClearTable(){
 	m_rtTable.clear();
+	if (m_ecmpRouting)
+		m_ecmpRouting->ClearRoutes();
 }
 
 void RdmaHw::RedistributeQp(){

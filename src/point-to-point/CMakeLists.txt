@@ -39,6 +39,9 @@ build_lib(
     model/rdma-cc-timely.cc
     model/rdma-congestion-ops.cc
     model/rdma-driver.cc
+    model/rdma-ecmp-routing.cc
+    model/rdma-header.cc
+    model/rdma-l4-protocol.cc
     model/rdma-hw.cc
     model/rdma-queue-pair.cc
     model/switch-mmu.cc
@@ -66,6 +69,9 @@ build_lib(
     model/rdma-cc-timely.h
     model/rdma-congestion-ops.h
     model/rdma-driver.h
+    model/rdma-ecmp-routing.h
+    model/rdma-header.h
+    model/rdma-l4-protocol.h
     model/rdma-hw.h
     model/rdma-queue-pair.h
     model/switch-mmu.h
