@@ -72,6 +72,12 @@ struct SimConfig {
   // --- queue_monitor ---
   uint64_t qlen_mon_start = 0, qlen_mon_end = 2100000000;
   uint32_t qlen_mon_interval = 100;
+
+  // --- routing ---
+  // "static" = BFS shortest-path (default), "bgp" = BGP-based routing
+  std::string routing_protocol = "static";
+  uint32_t bgp_local_pref = 100;
+  double bgp_propagation_delay_us = 1.0;
 };
 
 inline bool ReadConf(const std::string &network_configuration, SimConfig &cfg) {
@@ -244,6 +250,17 @@ inline bool ReadConf(const std::string &network_configuration, SimConfig &cfg) {
       cfg.qlen_mon_start = qm["start"].get<uint64_t>();
     if (qm.contains("end"))
       cfg.qlen_mon_end = qm["end"].get<uint64_t>();
+  }
+
+  if (j.contains("routing")) {
+    auto &rt = j["routing"];
+    if (rt.contains("protocol"))
+      cfg.routing_protocol = rt["protocol"].get<std::string>();
+    if (rt.contains("bgp_local_pref"))
+      cfg.bgp_local_pref = rt["bgp_local_pref"].get<uint32_t>();
+    if (rt.contains("bgp_propagation_delay_us"))
+      cfg.bgp_propagation_delay_us =
+          rt["bgp_propagation_delay_us"].get<double>();
   }
 
   fflush(stdout);

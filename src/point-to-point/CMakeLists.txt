@@ -36,6 +36,7 @@ build_lib(
     model/rdma-cc-dctcp.cc
     model/rdma-cc-hpcc.cc
     model/rdma-cc-hpcc-pint.cc
+    model/rdma-bgp-routing.cc
     model/rdma-cc-timely.cc
     model/rdma-congestion-ops.cc
     model/rdma-driver.cc
@@ -66,6 +67,7 @@ build_lib(
     model/rdma-cc-dctcp.h
     model/rdma-cc-hpcc.h
     model/rdma-cc-hpcc-pint.h
+    model/rdma-bgp-routing.h
     model/rdma-cc-timely.h
     model/rdma-congestion-ops.h
     model/rdma-driver.h

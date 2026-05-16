@@ -34,6 +34,7 @@ struct FlowInput {
 struct NetworkContext {
   NodeContainer nodes;
   TopologyState topology;
+  BgpRoutingState bgpState;
   vector<Ipv4Address> serverAddress;
   unordered_map<uint32_t, unordered_map<uint32_t, uint16_t>> portNumber;
   uint64_t nic_rate = 0;
@@ -295,11 +296,26 @@ inline bool SetupNetwork(const SimConfig &cfg, NetworkContext &ctx,
 
   // --- routing ---
   ctx.topology.packet_payload_size = cfg.packet_payload_size;
-  CalculateRoutes(ctx.topology, ctx.nodes);
-  SetRoutingEntries(ctx.topology);
-
-  // --- BDP and delay ---
-  ComputeBdpAndRtt(ctx.topology, ctx.nodes, node_num);
+  if (cfg.routing_protocol == "bgp") {
+    // BGP: routes computed via BFS first (for delay/BDP metrics), then
+    // BGP distributes routes through UPDATE messages with convergence.
+    // BFS provides the topology metrics; BGP provides the actual forwarding.
+    CalculateRoutes(ctx.topology, ctx.nodes);
+    // ComputeBdpAndRtt needs pairDelay/pairBw which are set by CalculateRoutes
+    ComputeBdpAndRtt(ctx.topology, ctx.nodes, node_num);
+    // Set up BGP speakers and originate routes.
+    // BGP UPDATE messages are scheduled as ns-3 events at microsecond scale,
+    // so convergence completes well before any application flows start.
+    SetupBgpRouting(ctx.topology, ctx.bgpState, ctx.nodes,
+                    cfg.bgp_local_pref, cfg.bgp_propagation_delay_us);
+    // Also install static routes as fallback to ensure BDP/RTT metrics work
+    SetRoutingEntries(ctx.topology);
+  } else {
+    // Static BFS routing (default)
+    CalculateRoutes(ctx.topology, ctx.nodes);
+    SetRoutingEntries(ctx.topology);
+    ComputeBdpAndRtt(ctx.topology, ctx.nodes, node_num);
+  }
 
   // --- switch CC ---
   for (uint32_t i = 0; i < node_num; i++) {
@@ -360,10 +376,17 @@ inline bool SetupNetwork(const SimConfig &cfg, NetworkContext &ctx,
 
   // --- schedule link down ---
   if (cfg.link_down_time > 0) {
-    Simulator::Schedule(Seconds(2) + MicroSeconds(cfg.link_down_time),
-                        &TakeDownLink, &ctx.topology, ctx.nodes,
-                        ctx.nodes.Get(cfg.link_down_A),
-                        ctx.nodes.Get(cfg.link_down_B));
+    if (cfg.routing_protocol == "bgp") {
+      Simulator::Schedule(Seconds(2) + MicroSeconds(cfg.link_down_time),
+                          &TakeDownLinkBgp, &ctx.topology, &ctx.bgpState,
+                          ctx.nodes, ctx.nodes.Get(cfg.link_down_A),
+                          ctx.nodes.Get(cfg.link_down_B));
+    } else {
+      Simulator::Schedule(Seconds(2) + MicroSeconds(cfg.link_down_time),
+                          &TakeDownLink, &ctx.topology, ctx.nodes,
+                          ctx.nodes.Get(cfg.link_down_A),
+                          ctx.nodes.Get(cfg.link_down_B));
+    }
   }
 
   // --- schedule buffer monitor ---
