@@ -8,6 +8,7 @@
 #include "qbb-net-device.h"
 #include <unordered_map>
 #include "pint.h"
+#include "rdma-congestion-ops.h"
 
 namespace ns3 {
 
@@ -88,8 +89,13 @@ public:
 	void PktSent(Ptr<RdmaQueuePair> qp, Ptr<Packet> pkt, Time interframeGap);
 	void UpdateNextAvail(Ptr<RdmaQueuePair> qp, Time interframeGap, uint32_t pkt_size);
 	void ChangeRate(Ptr<RdmaQueuePair> qp, DataRate new_rate);
+
+	// Pluggable congestion control (follows TcpCongestionOps pattern)
+	Ptr<RdmaCongestionOps> m_ccOps;
+
 	/******************************
 	 * Mellanox's version of DCQCN
+	 * (legacy — delegates to m_ccOps when available)
 	 *****************************/
 	double m_g; //feedback weight
 	double m_rateOnFirstCNP; // the fraction of line rate to set on first CNP

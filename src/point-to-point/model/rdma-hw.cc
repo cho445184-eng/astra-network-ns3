@@ -9,6 +9,7 @@
 #include "ns3/data-rate.h"
 #include "ns3/pointer.h"
 #include "rdma-hw.h"
+#include "rdma-congestion-ops.h"
 #include "ppp-header.h"
 #include "qbb-header.h"
 #include "cn-header.h"
@@ -207,6 +208,11 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 	}
 	// setup qp complete callback
 	m_qpCompleteCallback = cb;
+
+	// Setup congestion control ops back-pointer
+	if (m_ccOps) {
+		m_ccOps->SetRdmaHw(this);
+	}
 }
 
 uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
@@ -250,18 +256,25 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 	DataRate m_bps = m_nic[nic_idx].dev->GetDataRate();
 	qp->m_rate = m_bps;
 	qp->m_max_rate = m_bps;
-	if (m_cc_mode == 1){
-		qp->mlx.m_targetRate = m_bps;
-	}else if (m_cc_mode == 3){
-		qp->hp.m_curRate = m_bps;
-		if (m_multipleRate){
-			for (uint32_t i = 0; i < IntHeader::maxHop; i++)
-				qp->hp.hopState[i].Rc = m_bps;
+
+	// Delegate CC initialization to pluggable ops
+	if (m_ccOps) {
+		m_ccOps->InitQp(qp, m_bps);
+	} else {
+		// Legacy fallback
+		if (m_cc_mode == 1){
+			qp->mlx.m_targetRate = m_bps;
+		}else if (m_cc_mode == 3){
+			qp->hp.m_curRate = m_bps;
+			if (m_multipleRate){
+				for (uint32_t i = 0; i < IntHeader::maxHop; i++)
+					qp->hp.hopState[i].Rc = m_bps;
+			}
+		}else if (m_cc_mode == 7){
+			qp->tmly.m_curRate = m_bps;
+		}else if (m_cc_mode == 10){
+			qp->hpccPint.m_curRate = m_bps;
 		}
-	}else if (m_cc_mode == 7){
-		qp->tmly.m_curRate = m_bps;
-	}else if (m_cc_mode == 10){
-		qp->hpccPint.m_curRate = m_bps;
 	}
 
 	// Notify Nic
@@ -464,21 +477,28 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	if (ch.l3Prot == 0xFD) // NACK
 		RecoverQueue(qp);
 
-	// handle cnp
-	if (cnp){
-		if (m_cc_mode == 1){ // mlx version
-			cnp_received_mlx(qp);
+	// Delegate congestion control to pluggable ops
+	if (m_ccOps) {
+		if (cnp) {
+			m_ccOps->HandleCnp(qp);
 		}
-	}
-
-	if (m_cc_mode == 3){
-		HandleAckHp(qp, p, ch);
-	}else if (m_cc_mode == 7){
-		HandleAckTimely(qp, p, ch);
-	}else if (m_cc_mode == 8){
-		HandleAckDctcp(qp, p, ch);
-	}else if (m_cc_mode == 10){
-		HandleAckHpPint(qp, p, ch);
+		m_ccOps->HandleAck(qp, p, ch);
+	} else {
+		// Legacy fallback
+		if (cnp){
+			if (m_cc_mode == 1){
+				cnp_received_mlx(qp);
+			}
+		}
+		if (m_cc_mode == 3){
+			HandleAckHp(qp, p, ch);
+		}else if (m_cc_mode == 7){
+			HandleAckTimely(qp, p, ch);
+		}else if (m_cc_mode == 8){
+			HandleAckDctcp(qp, p, ch);
+		}else if (m_cc_mode == 10){
+			HandleAckHpPint(qp, p, ch);
+		}
 	}
 	// ACK may advance the on-the-fly window, allowing more packets to send
 	dev->TriggerTransmit();
@@ -547,10 +567,17 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 
 void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
 	NS_ASSERT(!m_qpCompleteCallback.IsNull());
-	if (m_cc_mode == 1){
-		Simulator::Cancel(qp->mlx.m_eventUpdateAlpha);
-		Simulator::Cancel(qp->mlx.m_eventDecreaseRate);
-		Simulator::Cancel(qp->mlx.m_rpTimer);
+
+	// Delegate CC cleanup to pluggable ops
+	if (m_ccOps) {
+		m_ccOps->OnQpComplete(qp);
+	} else {
+		// Legacy fallback
+		if (m_cc_mode == 1){
+			Simulator::Cancel(qp->mlx.m_eventUpdateAlpha);
+			Simulator::Cancel(qp->mlx.m_eventDecreaseRate);
+			Simulator::Cancel(qp->mlx.m_rpTimer);
+		}
 	}
 
 	// This callback will log info
