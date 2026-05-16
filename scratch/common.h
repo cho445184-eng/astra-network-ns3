@@ -32,6 +32,11 @@
 #include <ns3/rdma-client.h>
 #include <ns3/rdma-driver.h>
 #include <ns3/rdma.h>
+#include <ns3/rdma-cc-dcqcn.h>
+#include <ns3/rdma-cc-hpcc.h>
+#include <ns3/rdma-cc-timely.h>
+#include <ns3/rdma-cc-dctcp.h>
+#include <ns3/rdma-cc-hpcc-pint.h>
 #include <ns3/sim-setting.h>
 #include <ns3/switch-node.h>
 #include <time.h>
@@ -741,35 +746,66 @@ bool SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>)) {
     if (n.Get(i)->GetNodeType() == 0) { // is server
       // create RdmaHw
       Ptr<RdmaHw> rdmaHw = CreateObject<RdmaHw>();
-      rdmaHw->SetAttribute("ClampTargetRate", BooleanValue(clamp_target_rate));
-      rdmaHw->SetAttribute("AlphaResumInterval",
-                           DoubleValue(alpha_resume_interval));
-      rdmaHw->SetAttribute("RPTimer", DoubleValue(rp_timer));
-      rdmaHw->SetAttribute("FastRecoveryTimes",
-                           UintegerValue(fast_recovery_times));
-      rdmaHw->SetAttribute("EwmaGain", DoubleValue(ewma_gain));
-      rdmaHw->SetAttribute("RateAI", DataRateValue(DataRate(rate_ai)));
-      rdmaHw->SetAttribute("RateHAI", DataRateValue(DataRate(rate_hai)));
       rdmaHw->SetAttribute("L2BackToZero", BooleanValue(l2_back_to_zero));
       rdmaHw->SetAttribute("L2ChunkSize", UintegerValue(l2_chunk_size));
       rdmaHw->SetAttribute("L2AckInterval", UintegerValue(l2_ack_interval));
-      rdmaHw->SetAttribute("CcMode", UintegerValue(cc_mode));
-      rdmaHw->SetAttribute("RateDecreaseInterval",
-                           DoubleValue(rate_decrease_interval));
-      rdmaHw->SetAttribute("MinRate", DataRateValue(DataRate(min_rate)));
       rdmaHw->SetAttribute("Mtu", UintegerValue(packet_payload_size));
-      rdmaHw->SetAttribute("MiThresh", UintegerValue(mi_thresh));
       rdmaHw->SetAttribute("VarWin", BooleanValue(var_win));
-      rdmaHw->SetAttribute("FastReact", BooleanValue(fast_react));
-      rdmaHw->SetAttribute("MultiRate", BooleanValue(multi_rate));
-      rdmaHw->SetAttribute("SampleFeedback", BooleanValue(sample_feedback));
-      rdmaHw->SetAttribute("TargetUtil", DoubleValue(u_target));
       rdmaHw->SetAttribute("RateBound", BooleanValue(rate_bound));
-      rdmaHw->SetAttribute("DctcpRateAI",
-                           DataRateValue(DataRate(dctcp_rate_ai)));
-      rdmaHw->SetPintSmplThresh(pint_prob);
       rdmaHw->SetAttribute("TotalPauseTimes",
                            UintegerValue(nic_total_pause_time));
+
+      // create pluggable CC ops based on cc_mode
+      Ptr<RdmaCongestionOps> ccOps;
+      if (cc_mode == 1) {
+        Ptr<RdmaCcDcqcn> dcqcn = CreateObject<RdmaCcDcqcn>();
+        dcqcn->SetAttribute("ClampTargetRate", BooleanValue(clamp_target_rate));
+        dcqcn->SetAttribute("AlphaResumeInterval",
+                            DoubleValue(alpha_resume_interval));
+        dcqcn->SetAttribute("RPTimer", DoubleValue(rp_timer));
+        dcqcn->SetAttribute("FastRecoveryTimes",
+                            UintegerValue(fast_recovery_times));
+        dcqcn->SetAttribute("EwmaGain", DoubleValue(ewma_gain));
+        dcqcn->SetAttribute("RateAI", DataRateValue(DataRate(rate_ai)));
+        dcqcn->SetAttribute("RateHAI", DataRateValue(DataRate(rate_hai)));
+        dcqcn->SetAttribute("RateDecreaseInterval",
+                            DoubleValue(rate_decrease_interval));
+        dcqcn->SetAttribute("MinRate", DataRateValue(DataRate(min_rate)));
+        ccOps = dcqcn;
+      } else if (cc_mode == 3) {
+        Ptr<RdmaCcHpcc> hpcc = CreateObject<RdmaCcHpcc>();
+        hpcc->SetAttribute("TargetUtil", DoubleValue(u_target));
+        hpcc->SetAttribute("MiThresh", UintegerValue(mi_thresh));
+        hpcc->SetAttribute("MultiRate", BooleanValue(multi_rate));
+        hpcc->SetAttribute("SampleFeedback", BooleanValue(sample_feedback));
+        hpcc->SetAttribute("FastReact", BooleanValue(fast_react));
+        hpcc->SetAttribute("RateAI", DataRateValue(DataRate(rate_ai)));
+        hpcc->SetAttribute("MinRate", DataRateValue(DataRate(min_rate)));
+        ccOps = hpcc;
+      } else if (cc_mode == 7) {
+        Ptr<RdmaCcTimely> timely = CreateObject<RdmaCcTimely>();
+        timely->SetAttribute("RateAI", DataRateValue(DataRate(rate_ai)));
+        timely->SetAttribute("RateHAI", DataRateValue(DataRate(rate_hai)));
+        timely->SetAttribute("MinRate", DataRateValue(DataRate(min_rate)));
+        ccOps = timely;
+      } else if (cc_mode == 8) {
+        Ptr<RdmaCcDctcp> dctcp = CreateObject<RdmaCcDctcp>();
+        dctcp->SetAttribute("EwmaGain", DoubleValue(ewma_gain));
+        dctcp->SetAttribute("RateAI",
+                            DataRateValue(DataRate(dctcp_rate_ai)));
+        dctcp->SetAttribute("MinRate", DataRateValue(DataRate(min_rate)));
+        dctcp->SetAttribute("Mtu", UintegerValue(packet_payload_size));
+        ccOps = dctcp;
+      } else if (cc_mode == 10) {
+        Ptr<RdmaCcHpccPint> hpccPint = CreateObject<RdmaCcHpccPint>();
+        hpccPint->SetAttribute("TargetUtil", DoubleValue(u_target));
+        hpccPint->SetAttribute("MiThresh", UintegerValue(mi_thresh));
+        hpccPint->SetAttribute("RateAI", DataRateValue(DataRate(rate_ai)));
+        hpccPint->SetAttribute("MinRate", DataRateValue(DataRate(min_rate)));
+        hpccPint->SetSampleThreshold(pint_prob);
+        ccOps = hpccPint;
+      }
+      rdmaHw->m_ccOps = ccOps;
       // create and install RdmaDriver
       Ptr<RdmaDriver> rdma = CreateObject<RdmaDriver>();
       Ptr<Node> node = n.Get(i);
