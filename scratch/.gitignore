@@ -6,3 +6,15 @@
 !subdir/
 !scratch-simulator.cc
 !CMakeLists.txt
+
+# ASTRA-sim network simulation modules
+!common.h
+!json.hpp
+!sim_config.h
+!cc_factory.h
+!topology.h
+!monitoring.h
+!network_setup.h
+!config/
+!topology/
+!output/
