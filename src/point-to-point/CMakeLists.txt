@@ -82,5 +82,6 @@ build_lib(
   LIBRARIES_TO_LINK ${libnetwork}
                     ${mpi_libraries}
                     ${libinternet}
+                    ${libbgp}
   TEST_SOURCES test/point-to-point-test.cc
 )

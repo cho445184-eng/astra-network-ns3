@@ -5,7 +5,6 @@
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-helper.h"
 #include "ns3/qbb-helper.h"
-#include <ns3/rdma-bgp-routing.h>
 #include <ns3/rdma-driver.h>
 #include <ns3/switch-node.h>
 #include <map>
@@ -173,103 +172,9 @@ inline uint64_t GetNicRate(NodeContainer &n) {
   return 0;
 }
 
-// --- BGP routing ---
-
-struct BgpRoutingState {
-  std::map<uint32_t, Ptr<RdmaBgpRouting>> bgpSpeakers;
-};
-
-inline void SetupBgpRouting(TopologyState &topo, BgpRoutingState &bgpState,
-                            NodeContainer &n, uint32_t defaultLocalPref,
-                            double propagationDelayUs) {
-  Time propDelay = MicroSeconds(propagationDelayUs);
-
-  for (uint32_t i = 0; i < n.GetN(); i++) {
-    Ptr<RdmaBgpRouting> bgp = CreateObject<RdmaBgpRouting>();
-    bgp->SetNodeId(n.Get(i)->GetId());
-    bgp->SetIsSwitch(n.Get(i)->GetNodeType() == 1);
-    bgp->SetPropagationDelay(propDelay);
-    bgp->SetAttribute("DefaultLocalPref", UintegerValue(defaultLocalPref));
-
-    uint32_t nodeId = n.Get(i)->GetId();
-    auto &neighbors = topo.nbr2if[n.Get(i)];
-    for (auto &[peer, iface] : neighbors) {
-      if (!iface.up)
-        continue;
-      bgp->AddNeighbor(peer->GetId(), iface.idx, iface.delay);
-    }
-
-    auto installCb = [nodePtr = n.Get(i)](
-                         Ipv4Address prefix,
-                         const std::vector<int> &nextHops) {
-      if (nodePtr->GetNodeType() == 1) {
-        Ptr<SwitchNode> sw = DynamicCast<SwitchNode>(nodePtr);
-        uint32_t dip = prefix.Get();
-        sw->ClearTable();
-        auto ribPtr =
-            nodePtr->GetObject<RdmaBgpRouting>();
-        if (ribPtr) {
-          for (auto &[pfx, entry] : ribPtr->GetRib()) {
-            Ipv4Address addr(pfx);
-            for (int nh : entry.bestNextHops)
-              sw->AddTableEntry(addr, nh);
-          }
-        }
-      } else {
-        Ptr<RdmaDriver> rdma = nodePtr->GetObject<RdmaDriver>();
-        if (rdma && rdma->m_rdma) {
-          rdma->m_rdma->ClearTable();
-          auto ribPtr =
-              nodePtr->GetObject<RdmaBgpRouting>();
-          if (ribPtr) {
-            for (auto &[pfx, entry] : ribPtr->GetRib()) {
-              Ipv4Address addr(pfx);
-              for (int nh : entry.bestNextHops)
-                rdma->m_rdma->AddTableEntry(addr, nh);
-            }
-          }
-        }
-      }
-    };
-    bgp->SetInstallRouteCallback(installCb);
-
-    n.Get(i)->AggregateObject(bgp);
-    bgpState.bgpSpeakers[nodeId] = bgp;
-  }
-
-  for (uint32_t i = 0; i < n.GetN(); i++) {
-    if (n.Get(i)->GetNodeType() == 0) {
-      Ipv4Address hostIp = node_id_to_ip(n.Get(i)->GetId());
-      bgpState.bgpSpeakers[n.Get(i)->GetId()]->OriginateRoute(hostIp);
-    }
-  }
-}
-
-inline void TakeDownLinkBgp(TopologyState *topo, BgpRoutingState *bgpState,
-                            NodeContainer n, Ptr<Node> a, Ptr<Node> b) {
-  if (!topo->nbr2if[a][b].up)
-    return;
-
-  topo->nbr2if[a][b].up = topo->nbr2if[b][a].up = false;
-  DynamicCast<QbbNetDevice>(a->GetDevice(topo->nbr2if[a][b].idx))->TakeDown();
-  DynamicCast<QbbNetDevice>(b->GetDevice(topo->nbr2if[b][a].idx))->TakeDown();
-
-  auto *bgpA = bgpState->bgpSpeakers.count(a->GetId())
-                   ? GetPointer(bgpState->bgpSpeakers[a->GetId()])
-                   : nullptr;
-  auto *bgpB = bgpState->bgpSpeakers.count(b->GetId())
-                   ? GetPointer(bgpState->bgpSpeakers[b->GetId()])
-                   : nullptr;
-  if (bgpA)
-    bgpA->WithdrawRoutesFromNeighbor(b->GetId());
-  if (bgpB)
-    bgpB->WithdrawRoutesFromNeighbor(a->GetId());
-
-  for (uint32_t i = 0; i < n.GetN(); i++) {
-    if (n.Get(i)->GetNodeType() == 0)
-      n.Get(i)->GetObject<RdmaDriver>()->m_rdma->RedistributeQp();
-  }
-}
+// BgpRoutingState is a placeholder for tracking BGP-related setup state.
+// The actual BGP application instances are managed in NetworkContext.
+struct BgpRoutingState {};
 
 #endif // TOPOLOGY_H
 

@@ -1,5 +1,6 @@
 set(astra-sim-ns3-libs-list
   "libapplications"
+  "libbgp"
   "libcore"
   "libcsma"
   "libinternet"

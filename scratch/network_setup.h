@@ -5,6 +5,8 @@
 #include "monitoring.h"
 #include "sim_config.h"
 #include "topology.h"
+#include <ns3/bgp.h>
+#include <ns3/rdma-bgp-routing.h>
 
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
@@ -35,6 +37,8 @@ struct NetworkContext {
   NodeContainer nodes;
   TopologyState topology;
   BgpRoutingState bgpState;
+  vector<Ptr<Bgp>> bgpApps;
+  vector<Ptr<RdmaBgpBridge>> bgpBridges;
   vector<Ipv4Address> serverAddress;
   unordered_map<uint32_t, unordered_map<uint32_t, uint16_t>> portNumber;
   uint64_t nic_rate = 0;
@@ -296,25 +300,68 @@ inline bool SetupNetwork(const SimConfig &cfg, NetworkContext &ctx,
 
   // --- routing ---
   ctx.topology.packet_payload_size = cfg.packet_payload_size;
+  // BFS is always needed for delay/BDP metrics used by RDMA flow setup
+  CalculateRoutes(ctx.topology, ctx.nodes);
+  ComputeBdpAndRtt(ctx.topology, ctx.nodes, node_num);
+
   if (cfg.routing_protocol == "bgp") {
-    // BGP: routes computed via BFS first (for delay/BDP metrics), then
-    // BGP distributes routes through UPDATE messages with convergence.
-    // BFS provides the topology metrics; BGP provides the actual forwarding.
-    CalculateRoutes(ctx.topology, ctx.nodes);
-    // ComputeBdpAndRtt needs pairDelay/pairBw which are set by CalculateRoutes
-    ComputeBdpAndRtt(ctx.topology, ctx.nodes, node_num);
-    // Set up BGP speakers and originate routes.
-    // BGP UPDATE messages are scheduled as ns-3 events at microsecond scale,
-    // so convergence completes well before any application flows start.
-    SetupBgpRouting(ctx.topology, ctx.bgpState, ctx.nodes,
-                    cfg.bgp_local_pref, cfg.bgp_propagation_delay_us);
-    // Also install static routes as fallback to ensure BDP/RTT metrics work
+    // Install static routes first (immediate RDMA forwarding);
+    // BGP will overwrite them once sessions converge.
     SetRoutingEntries(ctx.topology);
+
+    // Install ns3-bgp (Nat-Lab/ns3-bgp) application on each node.
+    // Each node gets a unique ASN (base_asn + node_id) for eBGP.
+    uint32_t base_asn = 65000;
+    for (uint32_t i = 0; i < node_num; i++) {
+      Ptr<Bgp> bgpApp = CreateObject<Bgp>();
+      Ipv4Address routerId = ctx.nodes.Get(i)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+      bgpApp->SetBgpId(routerId);
+      bgpApp->SetHoldTimer(Seconds(cfg.bgp_hold_timer_s));
+      bgpApp->SetClockInterval(MilliSeconds(100));
+      uint32_t myAsn = base_asn + ctx.nodes.Get(i)->GetId();
+
+      // Add peers: each physical neighbor is a BGP peer
+      auto &neighbors = ctx.topology.nbr2if[ctx.nodes.Get(i)];
+      for (auto &[peerNode, iface] : neighbors) {
+        if (!iface.up)
+          continue;
+        Peer peerCfg;
+        peerCfg.local_asn = myAsn;
+        peerCfg.peer_asn = base_asn + peerNode->GetId();
+        peerCfg.peer_address = peerNode->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+        peerCfg.passive = false;
+        peerCfg.no_nexthop_check = true;
+        peerCfg.forced_default_nexthop = true;
+        bgpApp->AddPeer(peerCfg);
+      }
+
+      // Hosts originate their own prefix
+      if (ctx.nodes.Get(i)->GetNodeType() == 0) {
+        Ipv4Address hostIp = ctx.serverAddress[i];
+        bgpApp->AddRoute(hostIp, Ipv4Mask("255.255.255.0"), routerId);
+      }
+
+      ctx.nodes.Get(i)->AddApplication(bgpApp);
+      bgpApp->SetStartTime(Seconds(0));
+      bgpApp->SetStopTime(Seconds(cfg.simulator_stop_time));
+      ctx.bgpApps.push_back(bgpApp);
+
+      // Create RDMA bridge that syncs BGP RIB → RDMA tables
+      Ptr<RdmaBgpBridge> bridge = CreateObject<RdmaBgpBridge>();
+      bridge->SetNode(ctx.nodes.Get(i));
+      bridge->SetBgpApp(bgpApp);
+      bridge->SetSyncInterval(MilliSeconds(
+          static_cast<uint64_t>(cfg.bgp_propagation_delay_us / 1000.0 * 10)));
+      ctx.bgpBridges.push_back(bridge);
+    }
+
+    // Start bridges after a short delay to let BGP sessions establish
+    for (auto &bridge : ctx.bgpBridges) {
+      Simulator::Schedule(Seconds(1), &RdmaBgpBridge::Start, GetPointer(bridge));
+    }
   } else {
     // Static BFS routing (default)
-    CalculateRoutes(ctx.topology, ctx.nodes);
     SetRoutingEntries(ctx.topology);
-    ComputeBdpAndRtt(ctx.topology, ctx.nodes, node_num);
   }
 
   // --- switch CC ---
@@ -375,18 +422,13 @@ inline bool SetupNetwork(const SimConfig &cfg, NetworkContext &ctx,
   tracef.close();
 
   // --- schedule link down ---
+  // When BGP is active, link failure is detected by BGP hold timer expiry
+  // and the RdmaBgpBridge re-syncs the RDMA tables automatically.
   if (cfg.link_down_time > 0) {
-    if (cfg.routing_protocol == "bgp") {
-      Simulator::Schedule(Seconds(2) + MicroSeconds(cfg.link_down_time),
-                          &TakeDownLinkBgp, &ctx.topology, &ctx.bgpState,
-                          ctx.nodes, ctx.nodes.Get(cfg.link_down_A),
-                          ctx.nodes.Get(cfg.link_down_B));
-    } else {
-      Simulator::Schedule(Seconds(2) + MicroSeconds(cfg.link_down_time),
-                          &TakeDownLink, &ctx.topology, ctx.nodes,
-                          ctx.nodes.Get(cfg.link_down_A),
-                          ctx.nodes.Get(cfg.link_down_B));
-    }
+    Simulator::Schedule(Seconds(2) + MicroSeconds(cfg.link_down_time),
+                        &TakeDownLink, &ctx.topology, ctx.nodes,
+                        ctx.nodes.Get(cfg.link_down_A),
+                        ctx.nodes.Get(cfg.link_down_B));
   }
 
   // --- schedule buffer monitor ---
