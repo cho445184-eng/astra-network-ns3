@@ -10,7 +10,10 @@ set(astra-sim-ns3-libs-list
 list(JOIN astra-sim-ns3-libs-list " " astra-sim-ns3-libs)
 set(astra-sim-dir "${PROJECT_SOURCE_DIR}/../../../")
 include_directories("../scratch")
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../../ AstraSim)
+
+# AstraSim from repo root via shared cmake module (no add_subdirectory of parent project).
+set(ASTRA_SIM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../")
+include("${ASTRA_SIM_ROOT}/cmake/AstraSimLibrary.cmake")
 
 set(astra-sim-exec-libs ${astra-sim-ns3-libs-list} AstraSim)
 if(TARGET AstraSimProtobufDeps)
