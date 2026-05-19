@@ -50,3 +50,6 @@ vcpkg/
 
 # Ignore local cache used by e.g. clangd
 .cache/
+
+# Runtime output from ASTRA-sim ns-3 simulations
+scratch/output/
