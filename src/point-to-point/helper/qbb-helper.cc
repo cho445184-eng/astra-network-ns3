@@ -32,8 +32,11 @@
 #include "ns3/config.h"
 #include "ns3/packet.h"
 #include "ns3/names.h"
+
+#ifdef NS3_MPI
 #include "ns3/mpi-interface.h"
 #include "ns3/mpi-receiver.h"
+#endif
 
 #include "ns3/trace-helper.h"
 #include "point-to-point-helper.h"
@@ -255,6 +258,7 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
   //use a normal p2p channel, otherwise use a remote channel
   bool useNormalChannel = true;
   Ptr<QbbChannel> channel = 0;
+#ifdef NS3_MPI
   if (MpiInterface::IsEnabled ())
     {
       uint32_t n1SystemId = a->GetSystemId ();
@@ -265,6 +269,7 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
           useNormalChannel = false;
         }
     }
+#endif
   if (useNormalChannel)
     {
       channel = m_channelFactory.Create<QbbChannel> ();
@@ -272,12 +277,14 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
   else
     {
       channel = m_remoteChannelFactory.Create<QbbRemoteChannel> ();
+#ifdef NS3_MPI
       Ptr<MpiReceiver> mpiRecA = CreateObject<MpiReceiver> ();
       Ptr<MpiReceiver> mpiRecB = CreateObject<MpiReceiver> ();
       mpiRecA->SetReceiveCallback (MakeCallback (&QbbNetDevice::Receive, devA));
       mpiRecB->SetReceiveCallback (MakeCallback (&QbbNetDevice::Receive, devB));
       devA->AggregateObject (mpiRecA);
       devB->AggregateObject (mpiRecB);
+#endif
     }
 
   devA->Attach (channel);
