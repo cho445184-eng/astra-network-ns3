@@ -151,9 +151,6 @@ process_options()
 # ##############################################################################
 # Add subdirectories                  #
 # ##############################################################################
-# Nat-Lab libbgp (BGP FSM/RIB) required by src/bgp
-add_subdirectory(deps)
-
 # Build NS3 library core
 add_subdirectory(src)
 

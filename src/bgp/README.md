@@ -5,7 +5,7 @@ ns3-bgp
 
 ### Install
 
-In this fork, [libbgp](https://github.com/Nat-Lab/libbgp/) 0.6.3 is bundled as a git submodule at `deps/libbgp` and built automatically via `deps/CMakeLists.txt` (no system install required). Initialize it with `git submodule update --init deps/libbgp` from the ns-3 tree.
+In this fork, [libbgp](https://github.com/Nat-Lab/libbgp/) 0.6.3 is bundled as a git submodule at `libbgp/` (under this module) and built automatically by `CMakeLists.txt` here (no system install required). Initialize it with `git submodule update --init src/bgp/libbgp` from the ns-3 tree.
 
 Upstream `ns3-bgp` install instructions (system libbgp) for reference:
 
