@@ -5,7 +5,9 @@ ns3-bgp
 
 ### Install
 
-To install `ns3-bgp`, first install [libbgp](https://github.com/Nat-Lab/libbgp/) 0.6.x. Then navigate to your ns-3 source directory and clone `ns3-bgp` as `bgp` in `src/` and configure `ns3`: 
+In this fork, [libbgp](https://github.com/Nat-Lab/libbgp/) 0.6.3 is bundled as a git submodule at `deps/libbgp` and built automatically via `deps/CMakeLists.txt` (no system install required). Initialize it with `git submodule update --init deps/libbgp` from the ns-3 tree.
+
+Upstream `ns3-bgp` install instructions (system libbgp) for reference:
 
 ```
 $ git clone https://github.com/Nat-Lab/ns3-bgp src/bgp

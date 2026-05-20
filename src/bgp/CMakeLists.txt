@@ -19,5 +19,11 @@ build_lib(
   LIBRARIES_TO_LINK ${libcore}
                     ${libinternet}
                     ${libnetwork}
-                    bgp
 )
+
+# Bundled Nat-Lab libbgp (deps/libbgp submodule). Linked here instead of
+# LIBRARIES_TO_LINK to avoid exporting a non-ns-3 target in the ns-3 CMake package.
+target_link_libraries(${libbgp} PRIVATE libbgp_bundled)
+if(NOT ${XCODE})
+  target_link_libraries(${libbgp}-obj PUBLIC libbgp_bundled)
+endif()

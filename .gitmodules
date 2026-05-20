@@ -1,0 +1,3 @@
+[submodule "deps/libbgp"]
+	path = deps/libbgp
+	url = https://github.com/Nat-Lab/libbgp.git
